@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::num::NonZeroUsize;
 
 use arc_swap::ArcSwap;
@@ -426,15 +427,75 @@ fn textobject_impl(cx: &mut Context, objtype: textobject::TextObject, op: Operat
 }
 
 pub(crate) fn netrw(cx: &mut Context) {
-    let content = Command::new("ls")
-        .args(["-1"])
-        .output()
-        .unwrap();
-    let text = Rope::from_reader(&mut content.stdout.as_slice()).unwrap();
+    let (_, doc) = current!(cx.editor);
+    let doc_path = doc.path();
+    if let Some(path) = doc_path {
+        let mut p = path.clone();
+        p.pop();
+        let read = p.read_dir();
+        if let Ok(dirs) = read {
+            let mut dir_str = "".to_owned();
+            let mut directories: Vec<OsString> = Vec::new();
+            let mut files: Vec<OsString> = Vec::new();
+            let mut dir_strs: Vec<String> = Vec::new();
+            let mut f_strs: Vec<String> = Vec::new();
+            for dir in dirs {
+                if let Ok(d) = dir {
+                    let is_dir = d.file_type().unwrap().is_dir();
+                    if is_dir {
+                        directories.push(d.file_name());
+                    } else {
+                        files.push(d.file_name());
+                    }
+                }
+            }
+            for dir in directories {
+                if let Ok(name) = dir.into_string() {
+                    dir_strs.push(format!("{name}/\n"));
+                }
+            }
+            for file in files {
+                if let Ok(name) = file.into_string() {
+                    f_strs.push(format!("{name}\n"));
+                }
+            }
+            dir_strs.sort();
+            f_strs.sort();
+            for dir in dir_strs {
+                    dir_str.push_str(dir.as_str());
+            }
+            for file in f_strs {
+                    dir_str.push_str(file.as_str());
+            }
+            let r = Rope::from(dir_str);
+            let doc = Document::from(
+                r,
+                None,
+                Arc::new(ArcSwap::new(Arc::new(Config::default()))),
+            );
+            cx.editor.new_file_from_document(Action::Replace, doc);
+        } else {
+            log::info!("unable to read dir");
+        }
+    } else {
+        let content = Command::new("ls")
+            .args(["-1"])
+            .output()
+            .unwrap();
+        let text = Rope::from_reader(&mut content.stdout.as_slice()).unwrap();
         let doc = Document::from(
             text,
             None,
             Arc::new(ArcSwap::new(Arc::new(Config::default()))),
         );
-    cx.editor.new_file_from_document(Action::Load, doc);
+        cx.editor.new_file_from_document(Action::Replace, doc);
+    }
+    // doc_path.
+    // match fs::read_dir("a") {
+    //     Err(why) => println!("! {:?}", why.kind()),
+    //     Ok(paths) => for path in paths {
+    //         println!("> {:?}", path.unwrap().path());
+    //     },
+    // }
+
 }
