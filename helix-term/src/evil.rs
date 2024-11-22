@@ -1,11 +1,17 @@
 use std::num::NonZeroUsize;
 
+use arc_swap::ArcSwap;
+use std::sync::{Arc, Weak};
+use ropey::Rope;
+use std::process::Command;
+
 use helix_core::match_brackets::find_matching_bracket;
 use helix_core::movement::{self, Movement};
 use helix_core::{textobject, Range};
-use helix_view::document::Mode;
+use helix_view::document::{Mode, Document};
 use helix_view::info::Info;
 use helix_view::Editor;
+use helix_view::editor::{Action, Config};
 
 use crate::commands::{
     change_selection, delete_selection, extend_to_line_bounds, extend_word_impl,
@@ -417,4 +423,18 @@ fn textobject_impl(cx: &mut Context, objtype: textobject::TextObject, op: Operat
     ];
 
     cx.editor.autoinfo = Some(Info::new(title, &help_text));
+}
+
+pub(crate) fn netrw(cx: &mut Context) {
+    let content = Command::new("ls")
+        .args(["-1"])
+        .output()
+        .unwrap();
+    let text = Rope::from_reader(&mut content.stdout.as_slice()).unwrap();
+        let doc = Document::from(
+            text,
+            None,
+            Arc::new(ArcSwap::new(Arc::new(Config::default()))),
+        );
+    cx.editor.new_file_from_document(Action::Load, doc);
 }

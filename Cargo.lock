@@ -1384,6 +1384,7 @@ dependencies = [
  "once_cell",
  "open",
  "pulldown-cmark",
+ "ropey",
  "same-file",
  "serde",
  "serde_json",

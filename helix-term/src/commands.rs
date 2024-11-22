@@ -367,6 +367,7 @@ impl MappableCommand {
         delete_selection_noyank, "Delete selection without yanking",
         // Evil!!!
         // c_motion, "C motions",
+        netrw, "Netrw",
         goto_matching_pair, "Goto matching pair",
         change_to_end_of_word, "Change to end of word",
         change_to_end_of_long_word, "Change to end of long word",
