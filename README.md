@@ -13,6 +13,9 @@ Evil Helix
 
 ![Screenshot](./screenshot.png)
 
+# Crude Netrw
+![netrw](./netrw.gif)
+
 # Project Goals
 - Implement VIM motions as closely as possible
 - Reuse Helix's already implemented functions as much as possible
