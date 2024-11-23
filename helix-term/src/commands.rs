@@ -368,7 +368,8 @@ impl MappableCommand {
         // Evil!!!
         // c_motion, "C motions",
         netrw, "Netrw",
-        open_netrw, "Open Netrw",
+        open_netrw, "Open netrw",
+        netrw_parent_dir, "Open parent dir in netrw",
         goto_matching_pair, "Goto matching pair",
         change_to_end_of_word, "Change to end of word",
         change_to_end_of_long_word, "Change to end of long word",

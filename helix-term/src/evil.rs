@@ -642,6 +642,65 @@ pub(crate) fn open_netrw(cx: &mut Context) {
     }
 }
 
+pub(crate) fn netrw_parent_dir(cx: &mut Context) {
+    let (_, doc) = current!(cx.editor);
+    let doc_path = doc.path().clone().unwrap().to_str().unwrap();
+    let mut buf = PathBuf::from(doc_path);
+    buf.pop();
+    let cwd = buf.clone();
+    let read = cwd.read_dir();
+    if let Ok(dirs) = read {
+        log::info!("{:?}", dirs);
+        let mut dir_str = "../\n".to_owned();
+        let mut directories: Vec<OsString> = Vec::new();
+        let mut files: Vec<OsString> = Vec::new();
+        let mut dir_strs: Vec<String> = Vec::new();
+        let mut f_strs: Vec<String> = Vec::new();
+        for dir in dirs {
+            if let Ok(d) = dir {
+                let is_dir = d.file_type().unwrap().is_dir();
+                if is_dir {
+                    directories.push(d.file_name());
+                } else {
+                    files.push(d.file_name());
+                }
+            }
+        }
+        for dir in directories {
+            if let Ok(name) = dir.into_string() {
+                dir_strs.push(format!("{name}/\n"));
+            }
+        }
+        for file in files {
+            if let Ok(name) = file.into_string() {
+                f_strs.push(format!("{name}\n"));
+            }
+        }
+        dir_strs.sort();
+        f_strs.sort();
+        for dir in dir_strs {
+            log::info!("dir: {}", dir);
+            dir_str.push_str(dir.as_str());
+        }
+        for file in f_strs {
+            log::info!("file: {}", file);
+            dir_str.push_str(file.as_str());
+        }
+        let r = Rope::from(dir_str);
+        let mut doc = Document::from(
+            r,
+            None,
+            Arc::new(ArcSwap::new(Arc::new(Config::default()))),
+        );
+        doc.set_path(Some(cwd.as_path()));
+        let _ = cx.editor.close_document(doc!(cx.editor).id(), true);
+        cx.editor.new_file_from_document(Action::Replace, doc);
+        enter_netrw_mode(cx);
+    } else {
+        log::info!("unable to read dir");
+    }
+}
+
 pub(crate) fn get_line_text(cx: &mut Context) -> String {
     let mut current_line = 0;
     let (view, doc) = current!(cx.editor);
