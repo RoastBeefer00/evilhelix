@@ -127,7 +127,7 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
         "A-C" => copy_selection_on_prev_line,
 
 
-        "s" => select_regex,
+        "s" => change_selection,
         "A-s" => split_selection_on_newline,
         "A-minus" => merge_selections,
         "A-_" => merge_consecutive_selections,
@@ -457,6 +457,10 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
         "y" => yank,
         "p" => replace_with_yanked,
     }));
+    let mut netrw = normal.clone();
+    netrw.merge_nodes(keymap!({ "Netrw"
+        "ret" => open_netrw, 
+    }));
     let insert = keymap!({ "Insert mode"
         "esc" => normal_mode,
 
@@ -488,5 +492,6 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
         Mode::Select => select,
         Mode::SelectLine => line_select,
         Mode::Insert => insert,
+        Mode::Netrw => netrw,
     )
 }

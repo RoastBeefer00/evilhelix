@@ -59,6 +59,7 @@ pub enum Mode {
     Select = 1,
     SelectLine = 2,
     Insert = 3,
+    Netrw = 4,
 }
 
 impl Display for Mode {
@@ -68,6 +69,7 @@ impl Display for Mode {
             Mode::Select => f.write_str("select"),
             Mode::SelectLine => f.write_str("line-select"),
             Mode::Insert => f.write_str("insert"),
+            Mode::Netrw => f.write_str("netrw"),
         }
     }
 }
