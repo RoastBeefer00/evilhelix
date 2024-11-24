@@ -14,6 +14,26 @@ Evil Helix
 ![Screenshot](./screenshot.png)
 
 # Crude Netrw
+I managed to put together a crude implementation of netrw that actually works pretty well.  The code is crude at the moment too, so there may be bugs.
+## Why would I use this?
+Often I find myself working on a file within a folder and I'd like to see the other files available within that same folder. In standard Helix you would have to
+launch the file picker and search for the folder name (possibly even more specific if there's similarly named folders), which hopefully we can all argee is much slower than 
+having this information presented to you in a neat buffer.
+## How to use
+Press `-` to open Netrw.  If pressed at a scratch pad, the working directory will be lauched that Helix was launched from.  If pressed while a file is focused,
+it will open at the directory of that file.
+
+You'll notice that `NORMAL` mode becomes `NETRW` mode and you see files and folders.  You can navigate just like any other buffer, but keys that would change text
+or enter different modes have been disabled.
+
+Press `enter` to open. If the line under your cursor is a directory, netrw will open that directory and you will remain within netrw.  If it's a file, that file will be opened and the netrw
+buffer will close.
+## Further goals
+I'd like to figure out how to color the directories so that they stand out more.  I'd also like to place symbols in front of them like a folder or the icon for whatever
+language the file is. The super long term goal would be to be able to edit the buffer and have it edit the actual file system like [oil.nvim](https://github.com/stevearc/oil.nvim)
+does. I fear that Helix is not currently equipped for such asks... from what I can tell it's not very flexible from how the devs designed it and I don't know enough about
+the project to build something like that from scratch.
+
 ![netrw](./netrw.gif)
 
 # Project Goals
