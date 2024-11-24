@@ -1,16 +1,24 @@
+use std::ffi::OsString;
 use std::num::NonZeroUsize;
+use std::path::{Path, PathBuf};
+
+use arc_swap::ArcSwap;
+use std::sync::Arc;
+use ropey::Rope;
 
 use helix_core::match_brackets::find_matching_bracket;
 use helix_core::movement::{self, Movement};
 use helix_core::{textobject, Range};
-use helix_view::document::Mode;
+use helix_view::document::{Mode, Document};
 use helix_view::info::Info;
 use helix_view::Editor;
+use helix_view::editor::{Action, Config};
+use helix_stdx::env::current_working_dir;
 
 use crate::commands::{
     change_selection, delete_selection, extend_to_line_bounds, extend_word_impl,
     find_char_impl_forward, find_next_char_impl, goto_line_end_impl, select_line_below,
-    select_mode, yank, Context, Operation,
+    select_mode, yank, Context, Operation, enter_netrw_mode
 };
 
 pub(crate) fn change_to_end_of_word(cx: &mut Context) {
@@ -417,4 +425,294 @@ fn textobject_impl(cx: &mut Context, objtype: textobject::TextObject, op: Operat
     ];
 
     cx.editor.autoinfo = Some(Info::new(title, &help_text));
+}
+
+pub(crate) fn netrw(cx: &mut Context) {
+    let (_, doc) = current!(cx.editor);
+    let doc_path = doc.path();
+    let mut cwd: PathBuf = PathBuf::new();
+    if let Some(path) = doc_path {
+        cwd = path.clone();
+        cwd.pop();
+    } else {
+        cwd = current_working_dir();
+    }
+    let read = cwd.read_dir();
+    if let Ok(dirs) = read {
+        let mut dir_str = "../\n".to_owned();
+        let mut directories: Vec<OsString> = Vec::new();
+        let mut files: Vec<OsString> = Vec::new();
+        let mut dir_strs: Vec<String> = Vec::new();
+        let mut f_strs: Vec<String> = Vec::new();
+        for dir in dirs {
+            if let Ok(d) = dir {
+                let is_dir = d.file_type().unwrap().is_dir();
+                if is_dir {
+                    directories.push(d.file_name());
+                } else {
+                    files.push(d.file_name());
+                }
+            }
+        }
+        for dir in directories {
+            if let Ok(name) = dir.into_string() {
+                dir_strs.push(format!("{name}/\n"));
+            }
+        }
+        for file in files {
+            if let Ok(name) = file.into_string() {
+                f_strs.push(format!("{name}\n"));
+            }
+        }
+        dir_strs.sort();
+        f_strs.sort();
+        for dir in dir_strs {
+            dir_str.push_str(dir.as_str());
+        }
+        for file in f_strs {
+            dir_str.push_str(file.as_str());
+        }
+        let r = Rope::from(dir_str);
+        let mut doc = Document::from(
+            r,
+            None,
+            Arc::new(ArcSwap::new(Arc::new(Config::default()))),
+        );
+        doc.set_path(Some(cwd.as_path()));
+        cx.editor.new_file_from_document(Action::Replace, doc);
+        enter_netrw_mode(cx);
+    } else {
+        log::info!("unable to read dir");
+    }
+}
+
+pub(crate) fn netrw_open_dir(cx: &mut Context, path: &PathBuf) {
+    let cwd = path.clone();
+    let read = cwd.read_dir();
+    if let Ok(dirs) = read {
+        log::info!("{:?}", dirs);
+        let mut dir_str = "".to_owned();
+        let mut directories: Vec<OsString> = Vec::new();
+        let mut files: Vec<OsString> = Vec::new();
+        let mut dir_strs: Vec<String> = Vec::new();
+        let mut f_strs: Vec<String> = Vec::new();
+        for dir in dirs {
+            if let Ok(d) = dir {
+                let is_dir = d.file_type().unwrap().is_dir();
+                if is_dir {
+                    directories.push(d.file_name());
+                } else {
+                    files.push(d.file_name());
+                }
+            }
+        }
+        for dir in directories {
+            if let Ok(name) = dir.into_string() {
+                dir_strs.push(format!("{name}/\n"));
+            }
+        }
+        for file in files {
+            if let Ok(name) = file.into_string() {
+                f_strs.push(format!("{name}\n"));
+            }
+        }
+        dir_strs.sort();
+        f_strs.sort();
+        dir_str.push_str("../\n");
+        for dir in dir_strs {
+            log::info!("dir: {}", dir);
+            dir_str.push_str(dir.as_str());
+        }
+        for file in f_strs {
+            log::info!("file: {}", file);
+            dir_str.push_str(file.as_str());
+        }
+        let r = Rope::from(dir_str);
+        let mut doc = Document::from(
+            r,
+            None,
+            Arc::new(ArcSwap::new(Arc::new(Config::default()))),
+        );
+        doc.set_path(Some(cwd.as_path()));
+        cx.editor.new_file_from_document(Action::Replace, doc);
+        enter_netrw_mode(cx);
+    } else {
+        log::info!("unable to read dir");
+    }
+}
+
+pub(crate) fn open_netrw(cx: &mut Context) {
+    let mut line_text = String::new();
+    let mut current_line = 0;
+    let (view, doc) = current!(cx.editor);
+    let text = doc.text().slice(..);
+    doc.selection(view.id).clone().transform(|range| {
+        let pos = range.cursor(text);
+        current_line = text.char_to_line(pos);
+        range
+    });
+    let line = text.get_line(current_line);
+    if let Some(l) = line {
+        line_text = l.as_str().unwrap().to_string()
+    }
+    let doc_path = doc.path().clone().unwrap().to_str().unwrap();
+    let full_path = format!("{}/{}", doc_path, line_text);
+    log::info!("line text: {}", line_text);
+    log::info!("full_path: {}", full_path);
+    
+    if line_text.contains("/") {
+        log::info!("opening dir {full_path}");
+        let mut path = full_path.chars();
+        path.next_back();
+        if full_path.contains("..") {
+        path.next_back();
+        path.next_back();
+        path.next_back();
+        }
+        log::info!("opening dir {}", path.as_str());
+        let mut buf = PathBuf::from(path.as_str());
+        if full_path.contains("..") {
+            buf.pop();
+        }
+        // netrw_open_dir(cx, &buf);
+        let cwd = buf.clone();
+        let read = cwd.read_dir();
+        if let Ok(dirs) = read {
+            log::info!("{:?}", dirs);
+            let mut dir_str = "../\n".to_owned();
+            let mut directories: Vec<OsString> = Vec::new();
+            let mut files: Vec<OsString> = Vec::new();
+            let mut dir_strs: Vec<String> = Vec::new();
+            let mut f_strs: Vec<String> = Vec::new();
+            for dir in dirs {
+                if let Ok(d) = dir {
+                    let is_dir = d.file_type().unwrap().is_dir();
+                    if is_dir {
+                        directories.push(d.file_name());
+                    } else {
+                        files.push(d.file_name());
+                    }
+                }
+            }
+            for dir in directories {
+                if let Ok(name) = dir.into_string() {
+                    dir_strs.push(format!("{name}/\n"));
+                }
+            }
+            for file in files {
+                if let Ok(name) = file.into_string() {
+                    f_strs.push(format!("{name}\n"));
+                }
+            }
+            dir_strs.sort();
+            f_strs.sort();
+            for dir in dir_strs {
+                log::info!("dir: {}", dir);
+                dir_str.push_str(dir.as_str());
+            }
+            for file in f_strs {
+                log::info!("file: {}", file);
+                dir_str.push_str(file.as_str());
+            }
+            let r = Rope::from(dir_str);
+            let mut doc = Document::from(
+                r,
+                None,
+                Arc::new(ArcSwap::new(Arc::new(Config::default()))),
+            );
+            doc.set_path(Some(cwd.as_path()));
+            let _ = cx.editor.close_document(doc!(cx.editor).id(), true);
+            cx.editor.new_file_from_document(Action::Replace, doc);
+            enter_netrw_mode(cx);
+        } else {
+            log::info!("unable to read dir");
+        }
+    } else {
+        log::info!("opening file {full_path}");
+        // let buf = PathBuf::from(full_path);
+        // let path = buf.as_path();
+        let path = Path::new(full_path.trim());
+        log::info!("opening path {:?}", path);
+        let _ = cx.editor.close_document(doc!(cx.editor).id(), true);
+        if let Err(_) = cx.editor.open(&path, Action::Replace) {
+            let err = format!("unable to open \"{}\"", path.display());
+            cx.editor.set_error(err);
+        }
+        // cx.editor.close(view!(cx.editor).id);
+    }
+}
+
+pub(crate) fn netrw_parent_dir(cx: &mut Context) {
+    let (_, doc) = current!(cx.editor);
+    let doc_path = doc.path().clone().unwrap().to_str().unwrap();
+    let mut buf = PathBuf::from(doc_path);
+    buf.pop();
+    let cwd = buf.clone();
+    let read = cwd.read_dir();
+    if let Ok(dirs) = read {
+        log::info!("{:?}", dirs);
+        let mut dir_str = "../\n".to_owned();
+        let mut directories: Vec<OsString> = Vec::new();
+        let mut files: Vec<OsString> = Vec::new();
+        let mut dir_strs: Vec<String> = Vec::new();
+        let mut f_strs: Vec<String> = Vec::new();
+        for dir in dirs {
+            if let Ok(d) = dir {
+                let is_dir = d.file_type().unwrap().is_dir();
+                if is_dir {
+                    directories.push(d.file_name());
+                } else {
+                    files.push(d.file_name());
+                }
+            }
+        }
+        for dir in directories {
+            if let Ok(name) = dir.into_string() {
+                dir_strs.push(format!("{name}/\n"));
+            }
+        }
+        for file in files {
+            if let Ok(name) = file.into_string() {
+                f_strs.push(format!("{name}\n"));
+            }
+        }
+        dir_strs.sort();
+        f_strs.sort();
+        for dir in dir_strs {
+            log::info!("dir: {}", dir);
+            dir_str.push_str(dir.as_str());
+        }
+        for file in f_strs {
+            log::info!("file: {}", file);
+            dir_str.push_str(file.as_str());
+        }
+        let r = Rope::from(dir_str);
+        let mut doc = Document::from(
+            r,
+            None,
+            Arc::new(ArcSwap::new(Arc::new(Config::default()))),
+        );
+        doc.set_path(Some(cwd.as_path()));
+        let _ = cx.editor.close_document(doc!(cx.editor).id(), true);
+        cx.editor.new_file_from_document(Action::Replace, doc);
+        enter_netrw_mode(cx);
+    } else {
+        log::info!("unable to read dir");
+    }
+}
+
+pub(crate) fn get_line_text(cx: &mut Context) -> String {
+    let mut current_line = 0;
+    let (view, doc) = current!(cx.editor);
+    let text = doc.text().slice(..);
+    doc.selection(view.id).clone().transform(|range| {
+        let pos = range.cursor(text);
+        current_line = text.char_to_line(pos);
+        range
+    });
+    let line = text.get_line(current_line);
+    if let Some(l) = line {
+        return l.as_str().unwrap().to_string()
+    }
+    String::from("")
 }

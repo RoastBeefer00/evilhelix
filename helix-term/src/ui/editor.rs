@@ -496,6 +496,7 @@ impl EditorView {
             Mode::Select => theme.find_scope_index_exact("ui.cursor.select"),
             Mode::SelectLine => theme.find_scope_index_exact("ui.cursor.select"),
             Mode::Normal => theme.find_scope_index_exact("ui.cursor.normal"),
+            Mode::Netrw => theme.find_scope_index_exact("ui.cursor.normal"),
         }
         .unwrap_or(base_cursor_scope);
 
@@ -504,6 +505,7 @@ impl EditorView {
             Mode::Select => theme.find_scope_index_exact("ui.cursor.primary.select"),
             Mode::SelectLine => theme.find_scope_index_exact("ui.cursor.select"),
             Mode::Normal => theme.find_scope_index_exact("ui.cursor.primary.normal"),
+            Mode::Netrw => theme.find_scope_index_exact("ui.cursor.primary.normal"),
         }
         .unwrap_or(base_primary_cursor_scope);
 

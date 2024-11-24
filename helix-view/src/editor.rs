@@ -511,6 +511,7 @@ impl Default for StatusLineConfig {
 #[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
 pub struct ModeConfig {
     pub normal: String,
+    pub netrw: String,
     pub insert: String,
     pub select: String,
     pub line_select: String,
@@ -520,6 +521,7 @@ impl Default for ModeConfig {
     fn default() -> Self {
         Self {
             normal: String::from("NORMAL"),
+            netrw: String::from("NETRW"),
             insert: String::from("INSERT"),
             select: String::from("VISUAL"),
             line_select: String::from("V-LINE"),
@@ -1689,7 +1691,7 @@ impl Editor {
         id
     }
 
-    fn new_file_from_document(&mut self, action: Action, doc: Document) -> DocumentId {
+    pub fn new_file_from_document(&mut self, action: Action, doc: Document) -> DocumentId {
         let id = self.new_document(doc);
         self.switch(id, action);
         id

@@ -367,6 +367,9 @@ impl MappableCommand {
         delete_selection_noyank, "Delete selection without yanking",
         // Evil!!!
         // c_motion, "C motions",
+        netrw, "Netrw",
+        open_netrw, "Open netrw",
+        netrw_parent_dir, "Open parent dir in netrw",
         goto_matching_pair, "Goto matching pair",
         change_to_end_of_word, "Change to end of word",
         change_to_end_of_long_word, "Change to end of long word",
@@ -3154,6 +3157,10 @@ pub(crate) fn enter_insert_mode(cx: &mut Context) {
     cx.editor.mode = Mode::Insert;
 }
 
+pub(crate) fn enter_netrw_mode(cx: &mut Context) {
+    cx.editor.mode = Mode::Netrw;
+}
+
 // inserts at the start of each selection
 fn insert_mode(cx: &mut Context) {
     enter_insert_mode(cx);
@@ -4790,7 +4797,7 @@ pub(crate) fn paste_bracketed_value(cx: &mut Context, contents: String) {
     let count = cx.count();
     let paste = match cx.editor.mode {
         Mode::Insert | Mode::Select | Mode::SelectLine => Paste::Cursor,
-        Mode::Normal => Paste::Before,
+        Mode::Normal | Mode::Netrw => Paste::Before,
     };
     let (view, doc) = current!(cx.editor);
     paste_impl(&[contents], doc, view, paste, count, cx.editor.mode);
