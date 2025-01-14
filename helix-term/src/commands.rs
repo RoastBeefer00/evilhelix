@@ -6002,6 +6002,14 @@ fn goto_prev_entry(cx: &mut Context) {
     goto_ts_object_impl(cx, "entry", Direction::Backward)
 }
 
+static SURROUND_HELP_TEXT: [(&str, &str); 5] = [
+    ("( or )", "Parentheses"),
+    ("{ or }", "Curly braces"),
+    ("< or >", "Angled brackets"),
+    ("[ or ]", "Square brackets"),
+    (" ", "... or any character"),
+];
+
 fn surround_add(cx: &mut Context) {
     cx.on_next_key(move |cx, event| {
         cx.editor.autoinfo = None;
