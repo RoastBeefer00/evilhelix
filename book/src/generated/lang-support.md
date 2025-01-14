@@ -1,4 +1,4 @@
-| Language | Syntax Highlighting | Treesitter Textobjects | Auto Indent | Default LSP |
+| Language | Syntax Highlighting | Treesitter Textobjects | Auto Indent | Default language servers |
 | --- | --- | --- | --- | --- |
 | ada | ✓ | ✓ |  | `ada_language_server` |
 | adl | ✓ | ✓ | ✓ |  |
@@ -23,6 +23,7 @@
 | circom | ✓ |  |  | `circom-lsp` |
 | clojure | ✓ |  |  | `clojure-lsp` |
 | cmake | ✓ | ✓ | ✓ | `cmake-language-server` |
+| codeql | ✓ | ✓ |  | `codeql` |
 | comment | ✓ |  |  |  |
 | common-lisp | ✓ |  | ✓ | `cl-lsp` |
 | cpon | ✓ |  | ✓ |  |
@@ -78,6 +79,7 @@
 | gomod | ✓ |  |  | `gopls` |
 | gotmpl | ✓ |  |  | `gopls` |
 | gowork | ✓ |  |  | `gopls` |
+| gpr | ✓ |  |  | `ada_language_server` |
 | graphql | ✓ | ✓ |  | `graphql-lsp` |
 | groovy | ✓ |  |  |  |
 | gts | ✓ | ✓ | ✓ | `typescript-language-server`, `vscode-eslint-language-server`, `ember-language-server` |
@@ -114,6 +116,7 @@
 | kdl | ✓ | ✓ | ✓ |  |
 | koka | ✓ |  | ✓ | `koka` |
 | kotlin | ✓ |  |  | `kotlin-language-server` |
+| koto | ✓ | ✓ | ✓ | `koto-ls` |
 | latex | ✓ | ✓ |  | `texlab` |
 | ld | ✓ |  | ✓ |  |
 | ldif | ✓ |  |  |  |
@@ -133,11 +136,12 @@
 | mermaid | ✓ |  |  |  |
 | meson | ✓ |  | ✓ | `mesonlsp` |
 | mint |  |  |  | `mint` |
-| mojo | ✓ | ✓ | ✓ | `mojo-lsp-server` |
+| mojo | ✓ | ✓ | ✓ | `magic` |
 | move | ✓ |  |  |  |
 | msbuild | ✓ |  | ✓ |  |
 | nasm | ✓ | ✓ |  |  |
 | nestedtext | ✓ | ✓ | ✓ |  |
+| nginx | ✓ |  |  |  |
 | nickel | ✓ |  | ✓ | `nls` |
 | nim | ✓ | ✓ | ✓ | `nimlangserver` |
 | nix | ✓ | ✓ |  | `nil`, `nixd` |
@@ -145,7 +149,7 @@
 | nunjucks | ✓ |  |  |  |
 | ocaml | ✓ |  | ✓ | `ocamllsp` |
 | ocaml-interface | ✓ |  |  | `ocamllsp` |
-| odin | ✓ |  | ✓ | `ols` |
+| odin | ✓ | ✓ | ✓ | `ols` |
 | ohm | ✓ | ✓ | ✓ |  |
 | opencl | ✓ | ✓ | ✓ | `clangd` |
 | openscad | ✓ |  |  | `openscad-lsp` |
@@ -207,13 +211,14 @@
 | tact | ✓ | ✓ | ✓ |  |
 | task | ✓ |  |  |  |
 | tcl | ✓ |  | ✓ |  |
+| teal | ✓ |  |  | `teal-language-server` |
 | templ | ✓ |  |  | `templ` |
 | textproto | ✓ | ✓ | ✓ |  |
 | tfvars | ✓ |  | ✓ | `terraform-ls` |
 | thrift | ✓ |  |  |  |
 | todotxt | ✓ |  |  |  |
 | toml | ✓ | ✓ |  | `taplo` |
-| tsq | ✓ |  |  |  |
+| tsq | ✓ |  |  | `ts_query_ls` |
 | tsx | ✓ | ✓ | ✓ | `typescript-language-server` |
 | twig | ✓ |  |  |  |
 | typescript | ✓ | ✓ | ✓ | `typescript-language-server` |
@@ -224,6 +229,7 @@
 | uxntal | ✓ |  |  |  |
 | v | ✓ | ✓ | ✓ | `v-analyzer` |
 | vala | ✓ | ✓ |  | `vala-language-server` |
+| vento | ✓ |  |  |  |
 | verilog | ✓ | ✓ |  | `svlangserver` |
 | vhdl | ✓ |  |  | `vhdl_ls` |
 | vhs | ✓ |  |  |  |
