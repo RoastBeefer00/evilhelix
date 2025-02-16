@@ -1,6 +1,6 @@
 use arc_swap::{access::Map, ArcSwap};
 use futures_util::Stream;
-use helix_core::{diagnostic::Severity, pos_at_coords, syntax, Selection};
+use helix_core::{diagnostic::Severity, pos_at_coords, syntax, Range, Selection};
 use helix_lsp::{
     lsp::{self, notification::Notification},
     util::lsp_range_to_range,
@@ -11,7 +11,6 @@ use helix_view::{
     align_view,
     document::{DocumentOpenError, DocumentSavedEventResult},
     editor::{ConfigEvent, EditorEvent},
-    events::DiagnosticsDidChange,
     graphics::Rect,
     theme,
     tree::Layout,
@@ -33,7 +32,7 @@ use crate::{
 use log::{debug, error, info, warn};
 #[cfg(not(feature = "integration"))]
 use std::io::stdout;
-use std::{collections::btree_map::Entry, io::stdin, path::Path, sync::Arc};
+use std::{io::stdin, path::Path, sync::Arc};
 
 #[cfg(not(windows))]
 use anyhow::Context;
@@ -210,8 +209,13 @@ impl Application {
                         // opened last is focused on.
                         let view_id = editor.tree.focus;
                         let doc = doc_mut!(editor, &doc_id);
-                        let pos = Selection::point(pos_at_coords(doc.text().slice(..), pos, true));
-                        doc.set_selection(view_id, pos);
+                        let selection = pos
+                            .into_iter()
+                            .map(|coords| {
+                                Range::point(pos_at_coords(doc.text().slice(..), coords, true))
+                            })
+                            .collect();
+                        doc.set_selection(view_id, selection);
                     }
                 }
 
@@ -717,7 +721,7 @@ impl Application {
                         // This might not be required by the spec but Neovim does this as well, so it's
                         // probably a good idea for compatibility.
                         if let Some(config) = language_server.config() {
-                            tokio::spawn(language_server.did_change_configuration(config.clone()));
+                            language_server.did_change_configuration(config.clone());
                         }
 
                         let docs = self
@@ -735,15 +739,15 @@ impl Application {
                             let language_id =
                                 doc.language_id().map(ToOwned::to_owned).unwrap_or_default();
 
-                            tokio::spawn(language_server.text_document_did_open(
+                            language_server.text_document_did_open(
                                 url,
                                 doc.version(),
                                 doc.text(),
                                 language_id,
-                            ));
+                            );
                         }
                     }
-                    Notification::PublishDiagnostics(mut params) => {
+                    Notification::PublishDiagnostics(params) => {
                         let uri = match helix_core::Uri::try_from(params.uri) {
                             Ok(uri) => uri,
                             Err(err) => {
@@ -756,100 +760,12 @@ impl Application {
                             log::error!("Discarding publishDiagnostic notification sent by an uninitialized server: {}", language_server.name());
                             return;
                         }
-                        // have to inline the function because of borrow checking...
-                        let doc = self.editor.documents.values_mut()
-                            .find(|doc| doc.uri().is_some_and(|u| u == uri))
-                            .filter(|doc| {
-                                if let Some(version) = params.version {
-                                    if version != doc.version() {
-                                        log::info!("Version ({version}) is out of date for {uri:?} (expected ({}), dropping PublishDiagnostic notification", doc.version());
-                                        return false;
-                                    }
-                                }
-                                true
-                            });
-
-                        let mut unchanged_diag_sources = Vec::new();
-                        if let Some(doc) = &doc {
-                            let lang_conf = doc.language.clone();
-
-                            if let Some(lang_conf) = &lang_conf {
-                                if let Some(old_diagnostics) = self.editor.diagnostics.get(&uri) {
-                                    if !lang_conf.persistent_diagnostic_sources.is_empty() {
-                                        // Sort diagnostics first by severity and then by line numbers.
-                                        // Note: The `lsp::DiagnosticSeverity` enum is already defined in decreasing order
-                                        params
-                                            .diagnostics
-                                            .sort_by_key(|d| (d.severity, d.range.start));
-                                    }
-                                    for source in &lang_conf.persistent_diagnostic_sources {
-                                        let new_diagnostics = params
-                                            .diagnostics
-                                            .iter()
-                                            .filter(|d| d.source.as_ref() == Some(source));
-                                        let old_diagnostics = old_diagnostics
-                                            .iter()
-                                            .filter(|(d, d_server)| {
-                                                *d_server == server_id
-                                                    && d.source.as_ref() == Some(source)
-                                            })
-                                            .map(|(d, _)| d);
-                                        if new_diagnostics.eq(old_diagnostics) {
-                                            unchanged_diag_sources.push(source.clone())
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        let diagnostics = params.diagnostics.into_iter().map(|d| (d, server_id));
-
-                        // Insert the original lsp::Diagnostics here because we may have no open document
-                        // for diagnosic message and so we can't calculate the exact position.
-                        // When using them later in the diagnostics picker, we calculate them on-demand.
-                        let diagnostics = match self.editor.diagnostics.entry(uri) {
-                            Entry::Occupied(o) => {
-                                let current_diagnostics = o.into_mut();
-                                // there may entries of other language servers, which is why we can't overwrite the whole entry
-                                current_diagnostics.retain(|(_, lsp_id)| *lsp_id != server_id);
-                                current_diagnostics.extend(diagnostics);
-                                current_diagnostics
-                                // Sort diagnostics first by severity and then by line numbers.
-                            }
-                            Entry::Vacant(v) => v.insert(diagnostics.collect()),
-                        };
-
-                        // Sort diagnostics first by severity and then by line numbers.
-                        // Note: The `lsp::DiagnosticSeverity` enum is already defined in decreasing order
-                        diagnostics
-                            .sort_by_key(|(d, server_id)| (d.severity, d.range.start, *server_id));
-
-                        if let Some(doc) = doc {
-                            let diagnostic_of_language_server_and_not_in_unchanged_sources =
-                                |diagnostic: &lsp::Diagnostic, ls_id| {
-                                    ls_id == server_id
-                                        && diagnostic.source.as_ref().map_or(true, |source| {
-                                            !unchanged_diag_sources.contains(source)
-                                        })
-                                };
-                            let diagnostics = Editor::doc_diagnostics_with_filter(
-                                &self.editor.language_servers,
-                                &self.editor.diagnostics,
-                                doc,
-                                diagnostic_of_language_server_and_not_in_unchanged_sources,
-                            );
-                            doc.replace_diagnostics(
-                                diagnostics,
-                                &unchanged_diag_sources,
-                                Some(server_id),
-                            );
-
-                            let doc = doc.id();
-                            helix_event::dispatch(DiagnosticsDidChange {
-                                editor: &mut self.editor,
-                                doc,
-                            });
-                        }
+                        self.editor.handle_lsp_diagnostics(
+                            language_server.id(),
+                            uri,
+                            params.version,
+                            params.diagnostics,
+                        );
                     }
                     Notification::ShowMessage(params) => {
                         if self.config.load().editor.lsp.display_messages {
@@ -1126,7 +1042,13 @@ impl Application {
                     }
                 };
 
-                tokio::spawn(language_server!().reply(id, reply));
+                let language_server = language_server!();
+                if let Err(err) = language_server.reply(id.clone(), reply) {
+                    log::error!(
+                        "Failed to send reply to server '{}' request {id}: {err}",
+                        language_server.name()
+                    );
+                }
             }
             Call::Invalid { id } => log::error!("LSP invalid method call id={:?}", id),
         }

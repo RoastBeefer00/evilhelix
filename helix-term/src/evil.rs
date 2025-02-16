@@ -3,22 +3,22 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
 use arc_swap::ArcSwap;
-use std::sync::Arc;
 use ropey::Rope;
+use std::sync::Arc;
 
 use helix_core::match_brackets::find_matching_bracket;
 use helix_core::movement::{self, Movement};
 use helix_core::{textobject, Range};
-use helix_view::document::{Mode, Document};
+use helix_stdx::env::current_working_dir;
+use helix_view::document::{Document, Mode};
+use helix_view::editor::{Action, Config};
 use helix_view::info::Info;
 use helix_view::Editor;
-use helix_view::editor::{Action, Config};
-use helix_stdx::env::current_working_dir;
 
 use crate::commands::{
-    change_selection, delete_selection, extend_to_line_bounds, extend_word_impl,
+    change_selection, delete_selection, enter_netrw_mode, extend_to_line_bounds, extend_word_impl,
     find_char_impl_forward, find_next_char_impl, goto_line_end_impl, select_line_below,
-    select_mode, yank, Context, Operation, enter_netrw_mode
+    select_mode, yank, Context, Operation,
 };
 
 pub(crate) fn change_to_end_of_word(cx: &mut Context) {
@@ -473,11 +473,7 @@ pub(crate) fn netrw(cx: &mut Context) {
             dir_str.push_str(file.as_str());
         }
         let r = Rope::from(dir_str);
-        let mut doc = Document::from(
-            r,
-            None,
-            Arc::new(ArcSwap::new(Arc::new(Config::default()))),
-        );
+        let mut doc = Document::from(r, None, Arc::new(ArcSwap::new(Arc::new(Config::default()))));
         doc.set_path(Some(cwd.as_path()));
         cx.editor.new_file_from_document(Action::Replace, doc);
         enter_netrw_mode(cx);
@@ -528,11 +524,7 @@ pub(crate) fn netrw_open_dir(cx: &mut Context, path: &PathBuf) {
             dir_str.push_str(file.as_str());
         }
         let r = Rope::from(dir_str);
-        let mut doc = Document::from(
-            r,
-            None,
-            Arc::new(ArcSwap::new(Arc::new(Config::default()))),
-        );
+        let mut doc = Document::from(r, None, Arc::new(ArcSwap::new(Arc::new(Config::default()))));
         doc.set_path(Some(cwd.as_path()));
         cx.editor.new_file_from_document(Action::Replace, doc);
         enter_netrw_mode(cx);
@@ -559,15 +551,15 @@ pub(crate) fn open_netrw(cx: &mut Context) {
     let full_path = format!("{}/{}", doc_path, line_text);
     log::info!("line text: {}", line_text);
     log::info!("full_path: {}", full_path);
-    
+
     if line_text.contains("/") {
         log::info!("opening dir {full_path}");
         let mut path = full_path.chars();
         path.next_back();
         if full_path.contains("..") {
-        path.next_back();
-        path.next_back();
-        path.next_back();
+            path.next_back();
+            path.next_back();
+            path.next_back();
         }
         log::info!("opening dir {}", path.as_str());
         let mut buf = PathBuf::from(path.as_str());
@@ -615,11 +607,8 @@ pub(crate) fn open_netrw(cx: &mut Context) {
                 dir_str.push_str(file.as_str());
             }
             let r = Rope::from(dir_str);
-            let mut doc = Document::from(
-                r,
-                None,
-                Arc::new(ArcSwap::new(Arc::new(Config::default()))),
-            );
+            let mut doc =
+                Document::from(r, None, Arc::new(ArcSwap::new(Arc::new(Config::default()))));
             doc.set_path(Some(cwd.as_path()));
             let _ = cx.editor.close_document(doc!(cx.editor).id(), true);
             cx.editor.new_file_from_document(Action::Replace, doc);
@@ -687,11 +676,7 @@ pub(crate) fn netrw_parent_dir(cx: &mut Context) {
             dir_str.push_str(file.as_str());
         }
         let r = Rope::from(dir_str);
-        let mut doc = Document::from(
-            r,
-            None,
-            Arc::new(ArcSwap::new(Arc::new(Config::default()))),
-        );
+        let mut doc = Document::from(r, None, Arc::new(ArcSwap::new(Arc::new(Config::default()))));
         doc.set_path(Some(cwd.as_path()));
         let _ = cx.editor.close_document(doc!(cx.editor).id(), true);
         cx.editor.new_file_from_document(Action::Replace, doc);
@@ -712,7 +697,7 @@ pub(crate) fn get_line_text(cx: &mut Context) -> String {
     });
     let line = text.get_line(current_line);
     if let Some(l) = line {
-        return l.as_str().unwrap().to_string()
+        return l.as_str().unwrap().to_string();
     }
     String::from("")
 }
