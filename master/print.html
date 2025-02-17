@@ -177,7 +177,7 @@ Note that:</p>
 <li>
 <p>To take full advantage of Helix, install the language servers for your
 preferred programming languages. See the
-<a href="https://github.com/helix-editor/helix/wiki/How-to-install-the-default-language-servers">wiki</a>
+<a href="https://github.com/helix-editor/helix/wiki/Language-Server-Configurations">wiki</a>
 for instructions.</p>
 </li>
 </ul>
@@ -194,7 +194,8 @@ To set up Helix:</p>
 <ul>
 <li><a href="package-managers.html#linux">Linux</a>
 <ul>
-<li><a href="package-managers.html#ubuntu">Ubuntu</a></li>
+<li><a href="package-managers.html#ubuntudebian">Ubuntu/Debian</a></li>
+<li><a href="package-managers.html#ubuntu-ppa">Ubuntu (PPA)</a></li>
 <li><a href="package-managers.html#fedorarhel">Fedora/RHEL</a></li>
 <li><a href="package-managers.html#arch-linux-extra">Arch Linux extra</a></li>
 <li><a href="package-managers.html#nixos">NixOS</a></li>
@@ -221,7 +222,11 @@ To set up Helix:</p>
 <p><a href="https://repology.org/project/helix-editor/versions"><img src="https://repology.org/badge/vertical-allrepos/helix-editor.svg" alt="Packaging status" /></a></p>
 <h2 id="linux"><a class="header" href="#linux">Linux</a></h2>
 <p>The following third party repositories are available:</p>
-<h3 id="ubuntu"><a class="header" href="#ubuntu">Ubuntu</a></h3>
+<h3 id="ubuntudebian"><a class="header" href="#ubuntudebian">Ubuntu/Debian</a></h3>
+<p>Install the Debian package from the release page.</p>
+<p>If you are running a system older than Ubuntu 22.04, Mint 21, or Debian 12, you can build the <code>.deb</code> file locally
+<a href="./building-from-source.html#building-the-debian-package">from source</a>.</p>
+<h3 id="ubuntu-ppa"><a class="header" href="#ubuntu-ppa">Ubuntu (PPA)</a></h3>
 <p>Add the <code>PPA</code> for Helix:</p>
 <pre><code class="language-sh">sudo add-apt-repository ppa:maveonair/helix-editor
 sudo apt update
@@ -312,6 +317,7 @@ You can get <a href="https://www.microsoft.com/p/app-installer/9nblggh4nns1#acti
 </li>
 <li><a href="building-from-source.html#validating-the-installation">Validating the installation</a></li>
 <li><a href="building-from-source.html#configure-the-desktop-shortcut">Configure the desktop shortcut</a></li>
+<li><a href="building-from-source.html#building-the-debian-package">Building the Debian package</a></li>
 </ul>
 <p>Requirements:</p>
 <p>Clone the Helix GitHub repository into a directory of your choice. The
@@ -358,14 +364,13 @@ your <code>~/.bashrc</code> or equivalent:</p>
 <pre><code class="language-sh">export HELIX_RUNTIME=~/src/helix/runtime
 </code></pre>
 <p>Or, create a symbolic link:</p>
-<pre><code class="language-sh">ln -Ts $PWD/runtime ~/.config/helix/runtime
+<pre><code class="language-sh">ln -Tsf $PWD/runtime ~/.config/helix/runtime
 </code></pre>
-<p>If the above command fails to create a symbolic link because the file exists either move <code>~/.config/helix/runtime</code> to a new location or delete it, then run the symlink command above again.</p>
 <h4 id="windows-1"><a class="header" href="#windows-1">Windows</a></h4>
 <p>Either set the <code>HELIX_RUNTIME</code> environment variable to point to the runtime files using the Windows setting (search for
 <code>Edit environment variables for your account</code>) or use the <code>setx</code> command in
 Cmd:</p>
-<pre><code class="language-sh">setx HELIX_RUNTIME "%userprofile%\source\repos\helix\runtime"
+<pre><code class="language-sh">setx HELIX_RUNTIME "%userprofile%\src\helix\runtime"
 </code></pre>
 <blockquote>
 <p>💡 <code>%userprofile%</code> resolves to your user directory like
@@ -435,6 +440,35 @@ file. For example, to use <code>kitty</code>:</p>
 <pre><code class="language-sh">sed -i "s|Exec=hx %F|Exec=kitty hx %F|g" ~/.local/share/applications/Helix.desktop
 sed -i "s|Terminal=true|Terminal=false|g" ~/.local/share/applications/Helix.desktop
 </code></pre>
+<h3 id="building-the-debian-package"><a class="header" href="#building-the-debian-package">Building the Debian package</a></h3>
+<p>If the <code>.deb</code> file provided on the release page uses a <code>libc</code> version higher
+than that used by your Debian, Ubuntu, or Mint system, you can build the package
+from source to match your system's dependencies.</p>
+<p>Install <code>cargo-deb</code>, the tool used for building the <code>.deb</code> file:</p>
+<pre><code class="language-sh">cargo install cargo-deb
+</code></pre>
+<p>After cloning and entering the Helix repository as previously described,
+use the following command to build the release binary and package it into a <code>.deb</code> file in a single step.</p>
+<pre><code class="language-sh">cargo deb -- --locked
+</code></pre>
+<blockquote>
+<p>💡 This locks you into the <code>--release</code> profile. But you can also build helix in any way you like.
+As long as you leave a <code>target/release/hx</code> file, it will get packaged with <code>cargo deb --no-build</code></p>
+</blockquote>
+<blockquote>
+<p>💡 Don't worry about the repeated</p>
+<pre><code>warning: Failed to find dependency specification
+</code></pre>
+<p>warnings. Cargo deb just reports which packaged files it didn't derive dependencies for. But
+so far the dependency deriving seams very good, even if some of the grammar files are skipped.</p>
+</blockquote>
+<p>You can find the resulted <code>.deb</code> in <code>target/debian/</code>. It should contain everything it needs, including the</p>
+<ul>
+<li>completions for bash, fish, zsh</li>
+<li>.desktop file</li>
+<li>icon (though desktop environments might use their own since the name of the package is correctly <code>helix</code>)</li>
+<li>launcher to the binary with the runtime</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="using-helix"><a class="header" href="#using-helix">Using Helix</a></h1>
 <p>For a full interactive introduction to Helix, refer to the
 <a href="https://github.com/helix-editor/helix/blob/master/runtime/tutor">tutor</a> which
@@ -1137,8 +1171,8 @@ See the documentation page on <a href="./pickers.html">pickers</a> for more info
 <tr><td><code>:reload-all</code>, <code>:rla</code></td><td>Discard changes and reload all documents from the source files.</td></tr>
 <tr><td><code>:update</code>, <code>:u</code></td><td>Write changes only if the file has been modified.</td></tr>
 <tr><td><code>:lsp-workspace-command</code></td><td>Open workspace command picker</td></tr>
-<tr><td><code>:lsp-restart</code></td><td>Restarts the language servers used by the current doc</td></tr>
-<tr><td><code>:lsp-stop</code></td><td>Stops the language servers that are used by the current doc</td></tr>
+<tr><td><code>:lsp-restart</code></td><td>Restarts the given language servers, or all language servers that are used by the current file if no arguments are supplied</td></tr>
+<tr><td><code>:lsp-stop</code></td><td>Stops the given language servers, or all language servers that are used by the current file if no arguments are supplied</td></tr>
 <tr><td><code>:tree-sitter-scopes</code></td><td>Display tree sitter scopes, primarily for theming and development.</td></tr>
 <tr><td><code>:tree-sitter-highlight-name</code></td><td>Display name of tree-sitter highlight scope under the cursor.</td></tr>
 <tr><td><code>:debug-start</code>, <code>:dbg</code></td><td>Start a debug session from a given template with given parameters.</td></tr>
@@ -1278,6 +1312,9 @@ See the documentation page on <a href="./pickers.html">pickers</a> for more info
 <tr><td><code>file_picker</code></td><td>Open file picker</td><td>normal: <code>&lt;space&gt;f</code>, select: <code>&lt;space&gt;f</code></td></tr>
 <tr><td><code>file_picker_in_current_buffer_directory</code></td><td>Open file picker at current buffer's directory</td><td></td></tr>
 <tr><td><code>file_picker_in_current_directory</code></td><td>Open file picker at current working directory</td><td>normal: <code>&lt;space&gt;F</code>, select: <code>&lt;space&gt;F</code></td></tr>
+<tr><td><code>file_explorer</code></td><td>Open file explorer in workspace root</td><td>normal: <code>&lt;space&gt;e</code>, select: <code>&lt;space&gt;e</code></td></tr>
+<tr><td><code>file_explorer_in_current_buffer_directory</code></td><td>Open file explorer at current buffer's directory</td><td>normal: <code>&lt;space&gt;E</code>, select: <code>&lt;space&gt;E</code></td></tr>
+<tr><td><code>file_explorer_in_current_directory</code></td><td>Open file explorer at current working directory</td><td></td></tr>
 <tr><td><code>code_action</code></td><td>Perform code action</td><td>normal: <code>&lt;space&gt;a</code>, select: <code>&lt;space&gt;a</code></td></tr>
 <tr><td><code>buffer_picker</code></td><td>Open buffer picker</td><td>normal: <code>&lt;space&gt;b</code>, select: <code>&lt;space&gt;b</code></td></tr>
 <tr><td><code>jumplist_picker</code></td><td>Open jumplist picker</td><td>normal: <code>&lt;space&gt;j</code>, select: <code>&lt;space&gt;j</code></td></tr>
@@ -1414,6 +1451,7 @@ See the documentation page on <a href="./pickers.html">pickers</a> for more info
 <tr><td><code>wonly</code></td><td>Close windows except current</td><td>normal: <code>&lt;C-w&gt;o</code>, <code>&lt;space&gt;wo</code>, <code>&lt;C-w&gt;&lt;C-o&gt;</code>, <code>&lt;space&gt;w&lt;C-o&gt;</code>, select: <code>&lt;C-w&gt;o</code>, <code>&lt;space&gt;wo</code>, <code>&lt;C-w&gt;&lt;C-o&gt;</code>, <code>&lt;space&gt;w&lt;C-o&gt;</code></td></tr>
 <tr><td><code>select_register</code></td><td>Select register</td><td>normal: <code>"</code>, select: <code>"</code></td></tr>
 <tr><td><code>insert_register</code></td><td>Insert register</td><td>insert: <code>&lt;C-r&gt;</code></td></tr>
+<tr><td><code>copy_between_registers</code></td><td>Copy between two registers</td><td></td></tr>
 <tr><td><code>align_view_middle</code></td><td>Align view middle</td><td>normal: <code>Zm</code>, <code>zm</code>, select: <code>Zm</code>, <code>zm</code></td></tr>
 <tr><td><code>align_view_top</code></td><td>Align view top</td><td>normal: <code>Zt</code>, <code>zt</code>, select: <code>Zt</code>, <code>zt</code></td></tr>
 <tr><td><code>align_view_center</code></td><td>Align view center</td><td>normal: <code>Zc</code>, <code>Zz</code>, <code>zc</code>, <code>zz</code>, select: <code>Zc</code>, <code>Zz</code>, <code>zc</code>, <code>zz</code></td></tr>
@@ -1489,7 +1527,7 @@ Languages</a> guide for more language configuration information.</p>
 <tr><td>awk</td><td>✓</td><td>✓</td><td></td><td><code>awk-language-server</code></td></tr>
 <tr><td>bash</td><td>✓</td><td>✓</td><td>✓</td><td><code>bash-language-server</code></td></tr>
 <tr><td>bass</td><td>✓</td><td></td><td></td><td><code>bass</code></td></tr>
-<tr><td>beancount</td><td>✓</td><td></td><td></td><td></td></tr>
+<tr><td>beancount</td><td>✓</td><td></td><td></td><td><code>beancount-language-server</code></td></tr>
 <tr><td>bibtex</td><td>✓</td><td></td><td></td><td><code>texlab</code></td></tr>
 <tr><td>bicep</td><td>✓</td><td></td><td></td><td><code>bicep-langserver</code></td></tr>
 <tr><td>bitbake</td><td>✓</td><td></td><td></td><td><code>bitbake-language-server</code></td></tr>
@@ -1511,6 +1549,7 @@ Languages</a> guide for more language configuration information.</p>
 <tr><td>cpp</td><td>✓</td><td>✓</td><td>✓</td><td><code>clangd</code></td></tr>
 <tr><td>crystal</td><td>✓</td><td>✓</td><td></td><td><code>crystalline</code></td></tr>
 <tr><td>css</td><td>✓</td><td></td><td>✓</td><td><code>vscode-css-language-server</code></td></tr>
+<tr><td>csv</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>cue</td><td>✓</td><td></td><td></td><td><code>cuelsp</code></td></tr>
 <tr><td>cylc</td><td>✓</td><td>✓</td><td>✓</td><td></td></tr>
 <tr><td>d</td><td>✓</td><td>✓</td><td>✓</td><td><code>serve-d</code></td></tr>
@@ -1519,6 +1558,7 @@ Languages</a> guide for more language configuration information.</p>
 <tr><td>devicetree</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>dhall</td><td>✓</td><td>✓</td><td></td><td><code>dhall-lsp-server</code></td></tr>
 <tr><td>diff</td><td>✓</td><td></td><td></td><td></td></tr>
+<tr><td>djot</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>docker-compose</td><td>✓</td><td>✓</td><td>✓</td><td><code>docker-compose-langserver</code>, <code>yaml-language-server</code></td></tr>
 <tr><td>dockerfile</td><td>✓</td><td>✓</td><td></td><td><code>docker-langserver</code></td></tr>
 <tr><td>dot</td><td>✓</td><td></td><td></td><td><code>dot-language-server</code></td></tr>
@@ -1536,15 +1576,17 @@ Languages</a> guide for more language configuration information.</p>
 <tr><td>erb</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>erlang</td><td>✓</td><td>✓</td><td></td><td><code>erlang_ls</code>, <code>elp</code></td></tr>
 <tr><td>esdl</td><td>✓</td><td></td><td></td><td></td></tr>
+<tr><td>fga</td><td>✓</td><td>✓</td><td>✓</td><td></td></tr>
 <tr><td>fidl</td><td>✓</td><td></td><td></td><td></td></tr>
-<tr><td>fish</td><td>✓</td><td>✓</td><td>✓</td><td></td></tr>
+<tr><td>fish</td><td>✓</td><td>✓</td><td>✓</td><td><code>fish-lsp</code></td></tr>
 <tr><td>forth</td><td>✓</td><td></td><td></td><td><code>forth-lsp</code></td></tr>
 <tr><td>fortran</td><td>✓</td><td></td><td>✓</td><td><code>fortls</code></td></tr>
 <tr><td>fsharp</td><td>✓</td><td></td><td></td><td><code>fsautocomplete</code></td></tr>
-<tr><td>gas</td><td>✓</td><td>✓</td><td></td><td></td></tr>
+<tr><td>gas</td><td>✓</td><td>✓</td><td></td><td><code>asm-lsp</code></td></tr>
 <tr><td>gdscript</td><td>✓</td><td>✓</td><td>✓</td><td></td></tr>
 <tr><td>gemini</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>gherkin</td><td>✓</td><td></td><td></td><td></td></tr>
+<tr><td>ghostty</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>git-attributes</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>git-commit</td><td>✓</td><td>✓</td><td></td><td></td></tr>
 <tr><td>git-config</td><td>✓</td><td>✓</td><td></td><td></td></tr>
@@ -1562,6 +1604,7 @@ Languages</a> guide for more language configuration information.</p>
 <tr><td>gowork</td><td>✓</td><td></td><td></td><td><code>gopls</code></td></tr>
 <tr><td>gpr</td><td>✓</td><td></td><td></td><td><code>ada_language_server</code></td></tr>
 <tr><td>graphql</td><td>✓</td><td>✓</td><td></td><td><code>graphql-lsp</code></td></tr>
+<tr><td>gren</td><td>✓</td><td>✓</td><td></td><td></td></tr>
 <tr><td>groovy</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>gts</td><td>✓</td><td>✓</td><td>✓</td><td><code>typescript-language-server</code>, <code>vscode-eslint-language-server</code>, <code>ember-language-server</code></td></tr>
 <tr><td>hare</td><td>✓</td><td></td><td></td><td></td></tr>
@@ -1579,6 +1622,7 @@ Languages</a> guide for more language configuration information.</p>
 <tr><td>idris</td><td></td><td></td><td></td><td><code>idris2-lsp</code></td></tr>
 <tr><td>iex</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>ini</td><td>✓</td><td></td><td></td><td></td></tr>
+<tr><td>ink</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>inko</td><td>✓</td><td>✓</td><td>✓</td><td></td></tr>
 <tr><td>janet</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>java</td><td>✓</td><td>✓</td><td>✓</td><td><code>jdtls</code></td></tr>
@@ -1620,12 +1664,12 @@ Languages</a> guide for more language configuration information.</p>
 <tr><td>mojo</td><td>✓</td><td>✓</td><td>✓</td><td><code>magic</code></td></tr>
 <tr><td>move</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>msbuild</td><td>✓</td><td></td><td>✓</td><td></td></tr>
-<tr><td>nasm</td><td>✓</td><td>✓</td><td></td><td></td></tr>
+<tr><td>nasm</td><td>✓</td><td>✓</td><td></td><td><code>asm-lsp</code></td></tr>
 <tr><td>nestedtext</td><td>✓</td><td>✓</td><td>✓</td><td></td></tr>
 <tr><td>nginx</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>nickel</td><td>✓</td><td></td><td>✓</td><td><code>nls</code></td></tr>
 <tr><td>nim</td><td>✓</td><td>✓</td><td>✓</td><td><code>nimlangserver</code></td></tr>
-<tr><td>nix</td><td>✓</td><td>✓</td><td></td><td><code>nil</code>, <code>nixd</code></td></tr>
+<tr><td>nix</td><td>✓</td><td>✓</td><td>✓</td><td><code>nil</code>, <code>nixd</code></td></tr>
 <tr><td>nu</td><td>✓</td><td></td><td></td><td><code>nu</code></td></tr>
 <tr><td>nunjucks</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>ocaml</td><td>✓</td><td></td><td>✓</td><td><code>ocamllsp</code></td></tr>
@@ -1642,7 +1686,7 @@ Languages</a> guide for more language configuration information.</p>
 <tr><td>pest</td><td>✓</td><td>✓</td><td>✓</td><td><code>pest-language-server</code></td></tr>
 <tr><td>php</td><td>✓</td><td>✓</td><td>✓</td><td><code>intelephense</code></td></tr>
 <tr><td>php-only</td><td>✓</td><td></td><td></td><td></td></tr>
-<tr><td>pkgbuild</td><td>✓</td><td>✓</td><td>✓</td><td><code>pkgbuild-language-server</code>, <code>bash-language-server</code></td></tr>
+<tr><td>pkgbuild</td><td>✓</td><td>✓</td><td>✓</td><td><code>termux-language-server</code>, <code>bash-language-server</code></td></tr>
 <tr><td>pkl</td><td>✓</td><td></td><td>✓</td><td></td></tr>
 <tr><td>po</td><td>✓</td><td>✓</td><td></td><td></td></tr>
 <tr><td>pod</td><td>✓</td><td></td><td></td><td></td></tr>
@@ -1665,7 +1709,7 @@ Languages</a> guide for more language configuration information.</p>
 <tr><td>robot</td><td>✓</td><td></td><td></td><td><code>robotframework_ls</code></td></tr>
 <tr><td>ron</td><td>✓</td><td></td><td>✓</td><td></td></tr>
 <tr><td>rst</td><td>✓</td><td></td><td></td><td></td></tr>
-<tr><td>ruby</td><td>✓</td><td>✓</td><td>✓</td><td><code>solargraph</code></td></tr>
+<tr><td>ruby</td><td>✓</td><td>✓</td><td>✓</td><td><code>ruby-lsp</code>, <code>solargraph</code></td></tr>
 <tr><td>rust</td><td>✓</td><td>✓</td><td>✓</td><td><code>rust-analyzer</code></td></tr>
 <tr><td>sage</td><td>✓</td><td>✓</td><td></td><td></td></tr>
 <tr><td>scala</td><td>✓</td><td>✓</td><td>✓</td><td><code>metals</code></td></tr>
@@ -1694,6 +1738,7 @@ Languages</a> guide for more language configuration information.</p>
 <tr><td>tcl</td><td>✓</td><td></td><td>✓</td><td></td></tr>
 <tr><td>teal</td><td>✓</td><td></td><td></td><td><code>teal-language-server</code></td></tr>
 <tr><td>templ</td><td>✓</td><td></td><td></td><td><code>templ</code></td></tr>
+<tr><td>tera</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>textproto</td><td>✓</td><td>✓</td><td>✓</td><td></td></tr>
 <tr><td>tfvars</td><td>✓</td><td></td><td>✓</td><td><code>terraform-ls</code></td></tr>
 <tr><td>thrift</td><td>✓</td><td></td><td></td><td></td></tr>
@@ -1704,7 +1749,7 @@ Languages</a> guide for more language configuration information.</p>
 <tr><td>twig</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>typescript</td><td>✓</td><td>✓</td><td>✓</td><td><code>typescript-language-server</code></td></tr>
 <tr><td>typespec</td><td>✓</td><td>✓</td><td>✓</td><td><code>tsp-server</code></td></tr>
-<tr><td>typst</td><td>✓</td><td></td><td></td><td><code>tinymist</code>, <code>typst-lsp</code></td></tr>
+<tr><td>typst</td><td>✓</td><td></td><td></td><td><code>tinymist</code></td></tr>
 <tr><td>ungrammar</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>unison</td><td>✓</td><td>✓</td><td>✓</td><td></td></tr>
 <tr><td>uxntal</td><td>✓</td><td></td><td></td><td></td></tr>
@@ -1716,7 +1761,7 @@ Languages</a> guide for more language configuration information.</p>
 <tr><td>vhs</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>vue</td><td>✓</td><td></td><td></td><td><code>vue-language-server</code></td></tr>
 <tr><td>wast</td><td>✓</td><td></td><td></td><td></td></tr>
-<tr><td>wat</td><td>✓</td><td></td><td></td><td></td></tr>
+<tr><td>wat</td><td>✓</td><td></td><td></td><td><code>wat_server</code></td></tr>
 <tr><td>webc</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>wgsl</td><td>✓</td><td></td><td></td><td><code>wgsl_analyzer</code></td></tr>
 <tr><td>wit</td><td>✓</td><td></td><td>✓</td><td></td></tr>
@@ -1725,6 +1770,7 @@ Languages</a> guide for more language configuration information.</p>
 <tr><td>xml</td><td>✓</td><td></td><td>✓</td><td></td></tr>
 <tr><td>xtc</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>yaml</td><td>✓</td><td>✓</td><td>✓</td><td><code>yaml-language-server</code>, <code>ansible-language-server</code></td></tr>
+<tr><td>yara</td><td>✓</td><td></td><td></td><td><code>yls</code></td></tr>
 <tr><td>yuck</td><td>✓</td><td></td><td></td><td></td></tr>
 <tr><td>zig</td><td>✓</td><td>✓</td><td>✓</td><td><code>zls</code></td></tr>
 </tbody></table>
@@ -1772,11 +1818,13 @@ Its settings will be merged with the configuration directory <code>config.toml</
 <div style="break-before: page; page-break-before: always;"></div><h2 id="editor"><a class="header" href="#editor">Editor</a></h2>
 <ul>
 <li><a href="editor.html#editor-section"><code>[editor]</code> Section</a></li>
+<li><a href="editor.html#editorclipboard-provider-section"><code>[editor.clipboard-provider]</code> Section</a></li>
 <li><a href="editor.html#editorstatusline-section"><code>[editor.statusline]</code> Section</a></li>
 <li><a href="editor.html#editorlsp-section"><code>[editor.lsp]</code> Section</a></li>
 <li><a href="editor.html#editorcursor-shape-section"><code>[editor.cursor-shape]</code> Section</a></li>
 <li><a href="editor.html#editorfile-picker-section"><code>[editor.file-picker]</code> Section</a></li>
 <li><a href="editor.html#editorauto-pairs-section"><code>[editor.auto-pairs]</code> Section</a></li>
+<li><a href="editor.html#editorauto-save-section"><code>[editor.auto-save]</code> Section</a></li>
 <li><a href="editor.html#editorsearch-section"><code>[editor.search]</code> Section</a></li>
 <li><a href="editor.html#editorwhitespace-section"><code>[editor.whitespace]</code> Section</a></li>
 <li><a href="editor.html#editorindent-guides-section"><code>[editor.indent-guides]</code> Section</a></li>
@@ -1837,7 +1885,7 @@ a provided command.</p>
 <pre><code class="language-toml">[editor]
 clipboard-provider = "termcode"
 </code></pre>
-<p>Alternatively, Helix can be configured to use arbitary commands for clipboard integration:</p>
+<p>Alternatively, Helix can be configured to use arbitrary commands for clipboard integration:</p>
 <pre><code class="language-toml">[editor.clipboard-provider.custom]
 yank = { command = "cat",  args = ["test.txt"] }
 paste = { command = "tee",  args = ["test.txt"] }
@@ -2719,8 +2767,9 @@ language-servers = [ "mylang-lsp" ]
 <tr><td><code>language-servers</code></td><td>The Language Servers used for this language. See below for more information in the section <a href="languages.html#configuring-language-servers-for-a-language">Configuring Language Servers for a language</a></td></tr>
 <tr><td><code>grammar</code></td><td>The tree-sitter grammar to use (defaults to the value of <code>name</code>)</td></tr>
 <tr><td><code>formatter</code></td><td>The formatter for the language, it will take precedence over the lsp when defined. The formatter must be able to take the original file as input from stdin and write the formatted file to stdout</td></tr>
-<tr><td><code>soft-wrap</code></td><td><a href="./configuration.html#editorsoft-wrap-section">editor.softwrap</a></td></tr>
+<tr><td><code>soft-wrap</code></td><td><a href="./editor.html#editorsoft-wrap-section">editor.softwrap</a></td></tr>
 <tr><td><code>text-width</code></td><td>Maximum line length. Used for the <code>:reflow</code> command and soft-wrapping if <code>soft-wrap.wrap-at-text-width</code> is set, defaults to <code>editor.text-width</code></td></tr>
+<tr><td><code>rulers</code></td><td>Overrides the <code>editor.rulers</code> config key for the language.</td></tr>
 <tr><td><code>path-completion</code></td><td>Overrides the <code>editor.path-completion</code> config key for the language.</td></tr>
 <tr><td><code>workspace-lsp-roots</code></td><td>Directories relative to the workspace root that are treated as LSP roots. Should only be set in <code>.helix/config.toml</code>. Overwrites the setting of the same name in <code>config.toml</code> if set.</td></tr>
 <tr><td><code>persistent-diagnostic-sources</code></td><td>An array of LSP diagnostic sources assumed unchanged when the language server resends the same set of diagnostics. Helix can track the position for these diagnostics internally instead. Useful for diagnostics that are recomputed on save.</td></tr>
@@ -2899,13 +2948,6 @@ you will need to add queries.</li>
 for more information on writing queries.</li>
 <li>A list of highlight captures can be found <a href="https://docs.helix-editor.com/themes.html#scopes">on the themes page</a>.</li>
 </ol>
-<blockquote>
-<p>💡 In Helix, the first matching query takes precedence when evaluating
-queries, which is different from other editors such as Neovim where the last
-matching query supersedes the ones before it. See
-<a href="https://github.com/helix-editor/helix/pull/1170#issuecomment-997294090">this issue</a>
-for an example.</p>
-</blockquote>
 <h2 id="common-issues"><a class="header" href="#common-issues">Common issues</a></h2>
 <ul>
 <li>If you encounter errors when running Helix after switching branches, you may
