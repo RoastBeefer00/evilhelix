@@ -11,13 +11,16 @@ use helix_stdx::{
 };
 use helix_vcs::{FileChange, Hunk};
 pub use lsp::*;
-use tui::text::Span;
+use tui::{
+    text::{Span, Spans},
+    widgets::Cell,
+};
 pub use typed::*;
 
 use helix_core::{
     char_idx_at_visual_offset,
     chars::char_is_word,
-    comment,
+    command_line, comment,
     doc_formatter::TextFormat,
     encoding, find_workspace,
     graphemes::{self, next_grapheme_boundary},
@@ -30,10 +33,10 @@ use helix_core::{
     object, pos_at_coords,
     regex::{self, Regex},
     search::{self, CharMatcher},
-    selection, shellwords,
-    surround::{self},
-    syntax::{BlockCommentToken, LanguageServerFeature},
+    selection, surround,
+    syntax::config::{BlockCommentToken, LanguageServerFeature},
     text_annotations::{Overlay, TextAnnotations},
+    textobject,
     unicode::width::UnicodeWidthChar,
     visual_offset_from_block, Deletion, LineEnding, Position, Range, Rope, RopeReader, RopeSlice,
     Selection, SmallVec, Syntax, Tendril, Transaction,
@@ -55,7 +58,6 @@ use insert::*;
 use movement::Movement;
 
 use crate::{
-    args,
     compositor::{self, Component, Compositor},
     evil::*,
     filter_picker_entry,
@@ -65,6 +67,7 @@ use crate::{
 
 use crate::job::{self, Jobs};
 use std::{
+    char::{ToLowercase, ToUppercase},
     cmp::Ordering,
     collections::{HashMap, HashSet},
     error::Error,
@@ -144,10 +147,10 @@ impl Context<'_> {
     #[inline]
     pub fn callback<T, F>(
         &mut self,
-        call: impl Future<Output = helix_lsp::Result<serde_json::Value>> + 'static + Send,
+        call: impl Future<Output = helix_lsp::Result<T>> + 'static + Send,
         callback: F,
     ) where
-        T: for<'de> serde::Deserialize<'de> + Send + 'static,
+        T: Send + 'static,
         F: FnOnce(&mut Editor, &mut Compositor, T) + Send + 'static,
     {
         self.jobs.callback(make_job_callback(call, callback));
@@ -173,16 +176,15 @@ impl Context<'_> {
 
 #[inline]
 fn make_job_callback<T, F>(
-    call: impl Future<Output = helix_lsp::Result<serde_json::Value>> + 'static + Send,
+    call: impl Future<Output = helix_lsp::Result<T>> + 'static + Send,
     callback: F,
 ) -> std::pin::Pin<Box<impl Future<Output = Result<Callback, anyhow::Error>>>>
 where
-    T: for<'de> serde::Deserialize<'de> + Send + 'static,
+    T: Send + 'static,
     F: FnOnce(&mut Editor, &mut Compositor, T) + Send + 'static,
 {
     Box::pin(async move {
-        let json = call.await?;
-        let response = serde_json::from_value(json)?;
+        let response = call.await?;
         let call: job::Callback = Callback::EditorCompositor(Box::new(
             move |editor: &mut Editor, compositor: &mut Compositor| {
                 callback(editor, compositor, response)
@@ -208,7 +210,7 @@ use helix_view::{align_view, Align};
 pub enum MappableCommand {
     Typable {
         name: String,
-        args: Vec<String>,
+        args: String,
         doc: String,
     },
     Static {
@@ -243,16 +245,19 @@ impl MappableCommand {
     pub fn execute(&self, cx: &mut Context) {
         match &self {
             Self::Typable { name, args, doc: _ } => {
-                let args: Vec<Cow<str>> = args.iter().map(Cow::from).collect();
                 if let Some(command) = typed::TYPABLE_COMMAND_MAP.get(name.as_str()) {
                     let mut cx = compositor::Context {
                         editor: cx.editor,
                         jobs: cx.jobs,
                         scroll: None,
                     };
-                    if let Err(e) = (command.fun)(&mut cx, &args[..], PromptEvent::Validate) {
+                    if let Err(e) =
+                        typed::execute_command(&mut cx, command, args, PromptEvent::Validate)
+                    {
                         cx.editor.set_error(format!("{}", e));
                     }
+                } else {
+                    cx.editor.set_error(format!("no such command: '{name}'"));
                 }
             }
             Self::Static { fun, .. } => (fun)(cx),
@@ -470,6 +475,8 @@ impl MappableCommand {
         goto_implementation, "Goto implementation",
         goto_file_start, "Goto line number <n> else file start",
         goto_file_end, "Goto file end",
+        extend_to_file_start, "Extend to line number<n> else file start",
+        extend_to_file_end, "Extend to file end",
         goto_file, "Goto files/URLs in selections",
         goto_file_hsplit, "Goto files in selections (hsplit)",
         goto_file_vsplit, "Goto files in selections (vsplit)",
@@ -483,6 +490,7 @@ impl MappableCommand {
         goto_line, "Goto line",
         goto_last_line, "Goto last line",
         goto_last_line_and_delete, "Goto last line and delete",
+        extend_to_last_line, "Extend to last line",
         goto_first_diag, "Goto first diagnostic",
         goto_last_diag, "Goto last diagnostic",
         goto_next_diag, "Goto next diagnostic",
@@ -493,6 +501,8 @@ impl MappableCommand {
         goto_last_change, "Goto last change",
         goto_line_start, "Goto line start",
         goto_line_end, "Goto line end",
+        goto_column, "Goto column",
+        extend_to_column, "Extend to column",
         goto_next_buffer, "Goto next buffer",
         goto_previous_buffer, "Goto previous buffer",
         goto_line_end_newline, "Goto newline at line end",
@@ -675,13 +685,8 @@ impl std::str::FromStr for MappableCommand {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some(suffix) = s.strip_prefix(':') {
-            let mut typable_command = suffix.split(' ').map(|arg| arg.trim());
-            let name = typable_command
-                .next()
-                .ok_or_else(|| anyhow!("Expected typable command name"))?;
-            let args = typable_command
-                .map(|s| s.to_owned())
-                .collect::<Vec<String>>();
+            let (name, args, _) = command_line::split(suffix);
+            ensure!(!name.is_empty(), "Expected typable command name");
             typed::TYPABLE_COMMAND_MAP
                 .get(name)
                 .map(|cmd| {
@@ -693,7 +698,7 @@ impl std::str::FromStr for MappableCommand {
                     MappableCommand::Typable {
                         name: cmd.name.to_owned(),
                         doc,
-                        args,
+                        args: args.to_string(),
                     }
                 })
                 .ok_or_else(|| anyhow!("No TypableCommand named '{}'", s))
@@ -1306,28 +1311,44 @@ fn goto_next_paragraph(cx: &mut Context) {
 }
 
 fn goto_file_start(cx: &mut Context) {
+    goto_file_start_impl(cx, Movement::Move);
+}
+
+fn extend_to_file_start(cx: &mut Context) {
+    goto_file_start_impl(cx, Movement::Extend);
+}
+
+fn goto_file_start_impl(cx: &mut Context, movement: Movement) {
     if cx.count.is_some() {
-        goto_line(cx);
+        goto_line_impl(cx, movement);
     } else {
         let (view, doc) = current!(cx.editor);
         let text = doc.text().slice(..);
         let selection = doc
             .selection(view.id)
             .clone()
-            .transform(|range| range.put_cursor(text, 0, cx.editor.mode == Mode::Select));
+            .transform(|range| range.put_cursor(text, 0, movement == Movement::Extend));
         push_jump(view, doc);
         doc.set_selection(view.id, selection);
     }
 }
 
 fn goto_file_end(cx: &mut Context) {
+    goto_file_end_impl(cx, Movement::Move);
+}
+
+fn extend_to_file_end(cx: &mut Context) {
+    goto_file_end_impl(cx, Movement::Extend)
+}
+
+fn goto_file_end_impl(cx: &mut Context, movement: Movement) {
     let (view, doc) = current!(cx.editor);
     let text = doc.text().slice(..);
     let pos = doc.text().len_chars();
     let selection = doc
         .selection(view.id)
         .clone()
-        .transform(|range| range.put_cursor(text, pos, cx.editor.mode == Mode::Select));
+        .transform(|range| range.put_cursor(text, pos, movement == Movement::Extend));
     push_jump(view, doc);
     doc.set_selection(view.id, selection);
 }
@@ -1394,7 +1415,7 @@ fn goto_file_impl(cx: &mut Context, action: Action) {
         let path = path::expand(&sel);
         let path = &rel_path.join(path);
         if path.is_dir() {
-            let picker = ui::file_picker(path.into(), &cx.editor.config());
+            let picker = ui::file_picker(cx.editor, path.into());
             cx.push_layer(Box::new(overlaid(picker)));
         } else if let Err(e) = cx.editor.open(path, action) {
             cx.editor.set_error(format!("Open file failed: {:?}", e));
@@ -1431,7 +1452,7 @@ fn open_url(cx: &mut Context, url: Url, action: Action) {
         Ok(_) | Err(_) => {
             let path = &rel_path.join(url.path());
             if path.is_dir() {
-                let picker = ui::file_picker(path.into(), &cx.editor.config());
+                let picker = ui::file_picker(cx.editor, path.into());
                 cx.push_layer(Box::new(overlaid(picker)));
             } else if let Err(e) = cx.editor.open(path, action) {
                 cx.editor.set_error(format!("Open file failed: {:?}", e));
@@ -2039,17 +2060,48 @@ where
     exit_select_mode(cx);
 }
 
+enum CaseSwitcher {
+    Upper(ToUppercase),
+    Lower(ToLowercase),
+    Keep(Option<char>),
+}
+
+impl Iterator for CaseSwitcher {
+    type Item = char;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            CaseSwitcher::Upper(upper) => upper.next(),
+            CaseSwitcher::Lower(lower) => lower.next(),
+            CaseSwitcher::Keep(ch) => ch.take(),
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            CaseSwitcher::Upper(upper) => upper.size_hint(),
+            CaseSwitcher::Lower(lower) => lower.size_hint(),
+            CaseSwitcher::Keep(ch) => {
+                let n = if ch.is_some() { 1 } else { 0 };
+                (n, Some(n))
+            }
+        }
+    }
+}
+
+impl ExactSizeIterator for CaseSwitcher {}
+
 fn switch_case(cx: &mut Context) {
     switch_case_impl(cx, |string| {
         string
             .chars()
             .flat_map(|ch| {
                 if ch.is_lowercase() {
-                    ch.to_uppercase().collect()
+                    CaseSwitcher::Upper(ch.to_uppercase())
                 } else if ch.is_uppercase() {
-                    ch.to_lowercase().collect()
+                    CaseSwitcher::Lower(ch.to_lowercase())
                 } else {
-                    vec![ch]
+                    CaseSwitcher::Keep(Some(ch))
                 }
             })
             .collect()
@@ -2719,18 +2771,42 @@ fn global_search(cx: &mut Context) {
     struct GlobalSearchConfig {
         smart_case: bool,
         file_picker_config: helix_view::editor::FilePickerConfig,
+        directory_style: Style,
+        number_style: Style,
+        colon_style: Style,
     }
 
     let config = cx.editor.config();
     let config = GlobalSearchConfig {
         smart_case: config.search.smart_case,
         file_picker_config: config.file_picker.clone(),
+        directory_style: cx.editor.theme.get("ui.text.directory"),
+        number_style: cx.editor.theme.get("constant.numeric.integer"),
+        colon_style: cx.editor.theme.get("punctuation"),
     };
 
     let columns = [
-        PickerColumn::new("path", |item: &FileResult, _| {
+        PickerColumn::new("path", |item: &FileResult, config: &GlobalSearchConfig| {
             let path = helix_stdx::path::get_relative_path(&item.path);
-            format!("{}:{}", path.to_string_lossy(), item.line_num + 1).into()
+
+            let directories = path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .map(|p| format!("{}{}", p.display(), std::path::MAIN_SEPARATOR))
+                .unwrap_or_default();
+
+            let filename = item
+                .path
+                .file_name()
+                .expect("global search paths are normalized (can't end in `..`)")
+                .to_string_lossy();
+
+            Cell::from(Spans::from(vec![
+                Span::styled(directories, config.directory_style),
+                Span::raw(filename),
+                Span::styled(":", config.colon_style),
+                Span::styled((item.line_num + 1).to_string(), config.number_style),
+            ]))
         }),
         PickerColumn::hidden("contents"),
     ];
@@ -3295,7 +3371,7 @@ fn file_picker(cx: &mut Context) {
         cx.editor.set_error("Workspace directory does not exist");
         return;
     }
-    let picker = ui::file_picker(root, &cx.editor.config());
+    let picker = ui::file_picker(cx.editor, root);
     cx.push_layer(Box::new(overlaid(picker)));
 }
 
@@ -3312,7 +3388,7 @@ fn file_picker_in_current_buffer_directory(cx: &mut Context) {
         }
     };
 
-    let picker = ui::file_picker(path, &cx.editor.config());
+    let picker = ui::file_picker(cx.editor, path);
     cx.push_layer(Box::new(overlaid(picker)));
 }
 
@@ -3323,7 +3399,7 @@ fn file_picker_in_current_directory(cx: &mut Context) {
             .set_error("Current working directory does not exist");
         return;
     }
-    let picker = ui::file_picker(cwd, &cx.editor.config());
+    let picker = ui::file_picker(cx.editor, cwd);
     cx.push_layer(Box::new(overlaid(picker)));
 }
 
@@ -3646,7 +3722,7 @@ pub fn command_palette(cx: &mut Context) {
                     .iter()
                     .map(|cmd| MappableCommand::Typable {
                         name: cmd.name.to_owned(),
-                        args: Vec::new(),
+                        args: String::new(),
                         doc: cmd.doc.to_owned(),
                     }),
             );
@@ -3748,12 +3824,12 @@ fn insert_with_indent(cx: &mut Context, cursor_fallback: IndentFallbackPos) {
     enter_insert_mode(cx);
 
     let (view, doc) = current!(cx.editor);
+    let loader = cx.editor.syn_loader.load();
 
     let text = doc.text().slice(..);
     let contents = doc.text();
     let selection = doc.selection(view.id);
 
-    let language_config = doc.language_config();
     let syntax = doc.syntax();
     let tab_width = doc.tab_width();
 
@@ -3769,7 +3845,7 @@ fn insert_with_indent(cx: &mut Context, cursor_fallback: IndentFallbackPos) {
             let line_end_index = cursor_line_start;
 
             let indent = indent::indent_for_newline(
-                language_config,
+                &loader,
                 syntax,
                 &doc.config.load().indent_heuristic,
                 &doc.indent_style,
@@ -3879,6 +3955,7 @@ fn open(cx: &mut Context, open: Open, comment_continuation: CommentContinuation)
     enter_insert_mode(cx);
     let config = cx.editor.config();
     let (view, doc) = current!(cx.editor);
+    let loader = cx.editor.syn_loader.load();
 
     let text = doc.text().slice(..);
     let contents = doc.text();
@@ -3928,7 +4005,7 @@ fn open(cx: &mut Context, open: Open, comment_continuation: CommentContinuation)
         let indent = match line.first_non_whitespace_char() {
             Some(pos) if continue_comment_token.is_some() => line.slice(..pos).to_string(),
             _ => indent::indent_for_newline(
-                doc.language_config(),
+                &loader,
                 doc.syntax(),
                 &config.indent_heuristic,
                 &doc.indent_style,
@@ -4012,15 +4089,23 @@ fn push_jump(view: &mut View, doc: &Document) {
 }
 
 fn goto_line(cx: &mut Context) {
+    goto_line_impl(cx, Movement::Move);
+}
+
+fn goto_line_impl(cx: &mut Context, movement: Movement) {
     if cx.count.is_some() {
         let (view, doc) = current!(cx.editor);
         push_jump(view, doc);
 
-        goto_line_without_jumplist(cx.editor, cx.count);
+        goto_line_without_jumplist(cx.editor, cx.count, movement);
     }
 }
 
-fn goto_line_without_jumplist(editor: &mut Editor, count: Option<NonZeroUsize>) {
+fn goto_line_without_jumplist(
+    editor: &mut Editor,
+    count: Option<NonZeroUsize>,
+    movement: Movement,
+) {
     if let Some(count) = count {
         let (view, doc) = current!(editor);
         let text = doc.text().slice(..);
@@ -4035,13 +4120,21 @@ fn goto_line_without_jumplist(editor: &mut Editor, count: Option<NonZeroUsize>) 
         let selection = doc
             .selection(view.id)
             .clone()
-            .transform(|range| range.put_cursor(text, pos, editor.mode == Mode::Select));
+            .transform(|range| range.put_cursor(text, pos, movement == Movement::Extend));
 
         doc.set_selection(view.id, selection);
     }
 }
 
 fn goto_last_line(cx: &mut Context) {
+    goto_last_line_impl(cx, Movement::Move)
+}
+
+fn extend_to_last_line(cx: &mut Context) {
+    goto_last_line_impl(cx, Movement::Extend)
+}
+
+fn goto_last_line_impl(cx: &mut Context, movement: Movement) {
     let (view, doc) = current!(cx.editor);
     let text = doc.text().slice(..);
     let line_idx = if text.line(text.len_lines() - 1).len_chars() == 0 {
@@ -4058,6 +4151,10 @@ fn goto_last_line(cx: &mut Context) {
             cx.editor.mode == Mode::Select || cx.editor.mode == Mode::SelectLine,
         )
     });
+    let selection = doc
+        .selection(view.id)
+        .clone()
+        .transform(|range| range.put_cursor(text, pos, movement == Movement::Extend));
 
     push_jump(view, doc);
     doc.set_selection(view.id, selection);
@@ -4081,6 +4178,28 @@ fn goto_last_line_and_delete(cx: &mut Context) {
     push_jump(view, doc);
     doc.set_selection(view.id, selection);
     delete_selection(cx);
+}
+
+fn goto_column(cx: &mut Context) {
+    goto_column_impl(cx, Movement::Move);
+}
+
+fn extend_to_column(cx: &mut Context) {
+    goto_column_impl(cx, Movement::Extend);
+}
+
+fn goto_column_impl(cx: &mut Context, movement: Movement) {
+    let count = cx.count();
+    let (view, doc) = current!(cx.editor);
+    let text = doc.text().slice(..);
+    let selection = doc.selection(view.id).clone().transform(|range| {
+        let line = range.cursor_line(text);
+        let line_start = text.line_to_char(line);
+        let line_end = line_end_char_index(&text, line);
+        let pos = graphemes::nth_next_grapheme_boundary(text, line_start, count - 1).min(line_end);
+        range.put_cursor(text, pos, movement == Movement::Extend)
+    });
+    doc.set_selection(view.id, selection);
 }
 
 fn goto_last_accessed_file(cx: &mut Context) {
@@ -4447,6 +4566,7 @@ pub mod insert {
     pub fn insert_newline(cx: &mut Context) {
         let config = cx.editor.config();
         let (view, doc) = current_ref!(cx.editor);
+        let loader = cx.editor.syn_loader.load();
         let text = doc.text().slice(..);
         let line_ending = doc.line_ending.as_str();
 
@@ -4492,7 +4612,7 @@ pub mod insert {
                 let indent = match line.first_non_whitespace_char() {
                     Some(pos) if continue_comment_token.is_some() => line.slice(..pos).to_string(),
                     _ => indent::indent_for_newline(
-                        doc.language_config(),
+                        &loader,
                         doc.syntax(),
                         &config.indent_heuristic,
                         &doc.indent_style,
@@ -5243,7 +5363,10 @@ fn format_selections(cx: &mut Context) {
         )
         .unwrap();
 
-    let edits = tokio::task::block_in_place(|| helix_lsp::block_on(future)).unwrap_or_default();
+    let edits = tokio::task::block_in_place(|| helix_lsp::block_on(future))
+        .ok()
+        .flatten()
+        .unwrap_or_default();
 
     let transaction =
         helix_lsp::util::generate_transaction_from_edits(doc.text(), edits, offset_encoding);
@@ -5938,7 +6061,10 @@ fn wonly(cx: &mut Context) {
 }
 
 fn select_register(cx: &mut Context) {
-    cx.editor.autoinfo = Some(Info::from_registers(&cx.editor.registers));
+    cx.editor.autoinfo = Some(Info::from_registers(
+        "Select register",
+        &cx.editor.registers,
+    ));
     cx.on_next_key(move |cx, event| {
         cx.editor.autoinfo = None;
         if let Some(ch) = event.char() {
@@ -5948,7 +6074,10 @@ fn select_register(cx: &mut Context) {
 }
 
 fn insert_register(cx: &mut Context) {
-    cx.editor.autoinfo = Some(Info::from_registers(&cx.editor.registers));
+    cx.editor.autoinfo = Some(Info::from_registers(
+        "Insert register",
+        &cx.editor.registers,
+    ));
     cx.on_next_key(move |cx, event| {
         cx.editor.autoinfo = None;
         if let Some(ch) = event.char() {
@@ -5965,7 +6094,10 @@ fn insert_register(cx: &mut Context) {
 }
 
 fn copy_between_registers(cx: &mut Context) {
-    cx.editor.autoinfo = Some(Info::from_registers(&cx.editor.registers));
+    cx.editor.autoinfo = Some(Info::from_registers(
+        "Copy from register",
+        &cx.editor.registers,
+    ));
     cx.on_next_key(move |cx, event| {
         cx.editor.autoinfo = None;
 
@@ -5979,7 +6111,10 @@ fn copy_between_registers(cx: &mut Context) {
         };
         let values: Vec<_> = values.map(|value| value.to_string()).collect();
 
-        cx.editor.autoinfo = Some(Info::from_registers(&cx.editor.registers));
+        cx.editor.autoinfo = Some(Info::from_registers(
+            "Copy into register",
+            &cx.editor.registers,
+        ));
         cx.on_next_key(move |cx, event| {
             cx.editor.autoinfo = None;
 
@@ -6052,19 +6187,14 @@ fn goto_ts_object_impl(cx: &mut Context, object: &'static str, direction: Direct
     let count = cx.count();
     let motion = move |editor: &mut Editor| {
         let (view, doc) = current!(editor);
-        if let Some((lang_config, syntax)) = doc.language_config().zip(doc.syntax()) {
+        let loader = editor.syn_loader.load();
+        if let Some(syntax) = doc.syntax() {
             let text = doc.text().slice(..);
             let root = syntax.tree().root_node();
 
             let selection = doc.selection(view.id).clone().transform(|range| {
                 let new_range = movement::goto_treesitter_object(
-                    text,
-                    range,
-                    object,
-                    direction,
-                    root,
-                    lang_config,
-                    count,
+                    text, range, object, direction, &root, syntax, &loader, count,
                 );
 
                 if editor.mode == Mode::Select {
@@ -6134,6 +6264,115 @@ fn goto_next_entry(cx: &mut Context) {
 
 fn goto_prev_entry(cx: &mut Context) {
     goto_ts_object_impl(cx, "entry", Direction::Backward)
+}
+
+fn select_textobject_around(cx: &mut Context) {
+    select_textobject(cx, textobject::TextObject::Around);
+}
+
+fn select_textobject_inner(cx: &mut Context) {
+    select_textobject(cx, textobject::TextObject::Inside);
+}
+
+fn select_textobject(cx: &mut Context, objtype: textobject::TextObject) {
+    let count = cx.count();
+
+    cx.on_next_key(move |cx, event| {
+        cx.editor.autoinfo = None;
+        if let Some(ch) = event.char() {
+            let textobject = move |editor: &mut Editor| {
+                let (view, doc) = current!(editor);
+                let loader = editor.syn_loader.load();
+                let text = doc.text().slice(..);
+
+                let textobject_treesitter = |obj_name: &str, range: Range| -> Range {
+                    let Some(syntax) = doc.syntax() else {
+                        return range;
+                    };
+                    textobject::textobject_treesitter(
+                        text, range, objtype, obj_name, syntax, &loader, count,
+                    )
+                };
+
+                if ch == 'g' && doc.diff_handle().is_none() {
+                    editor.set_status("Diff is not available in current buffer");
+                    return;
+                }
+
+                let textobject_change = |range: Range| -> Range {
+                    let diff_handle = doc.diff_handle().unwrap();
+                    let diff = diff_handle.load();
+                    let line = range.cursor_line(text);
+                    let hunk_idx = if let Some(hunk_idx) = diff.hunk_at(line as u32, false) {
+                        hunk_idx
+                    } else {
+                        return range;
+                    };
+                    let hunk = diff.nth_hunk(hunk_idx).after;
+
+                    let start = text.line_to_char(hunk.start as usize);
+                    let end = text.line_to_char(hunk.end as usize);
+                    Range::new(start, end).with_direction(range.direction())
+                };
+
+                let selection = doc.selection(view.id).clone().transform(|range| {
+                    match ch {
+                        'w' => textobject::textobject_word(text, range, objtype, count, false),
+                        'W' => textobject::textobject_word(text, range, objtype, count, true),
+                        't' => textobject_treesitter("class", range),
+                        'f' => textobject_treesitter("function", range),
+                        'a' => textobject_treesitter("parameter", range),
+                        'c' => textobject_treesitter("comment", range),
+                        'T' => textobject_treesitter("test", range),
+                        'e' => textobject_treesitter("entry", range),
+                        'p' => textobject::textobject_paragraph(text, range, objtype, count),
+                        'm' => textobject::textobject_pair_surround_closest(
+                            doc.syntax(),
+                            text,
+                            range,
+                            objtype,
+                            count,
+                        ),
+                        'g' => textobject_change(range),
+                        // TODO: cancel new ranges if inconsistent surround matches across lines
+                        ch if !ch.is_ascii_alphanumeric() => textobject::textobject_pair_surround(
+                            doc.syntax(),
+                            text,
+                            range,
+                            objtype,
+                            ch,
+                            count,
+                        ),
+                        _ => range,
+                    }
+                });
+                doc.set_selection(view.id, selection);
+            };
+            cx.editor.apply_motion(textobject);
+        }
+    });
+
+    let title = match objtype {
+        textobject::TextObject::Inside => "Match inside",
+        textobject::TextObject::Around => "Match around",
+        _ => return,
+    };
+    let help_text = [
+        ("w", "Word"),
+        ("W", "WORD"),
+        ("p", "Paragraph"),
+        ("t", "Type definition (tree-sitter)"),
+        ("f", "Function (tree-sitter)"),
+        ("a", "Argument/parameter (tree-sitter)"),
+        ("c", "Comment (tree-sitter)"),
+        ("T", "Test (tree-sitter)"),
+        ("e", "Data structure entry (tree-sitter)"),
+        ("m", "Closest surrounding pair (tree-sitter)"),
+        ("g", "Change"),
+        (" ", "... or any character acting as a pair"),
+    ];
+
+    cx.editor.autoinfo = Some(Info::new(title, &help_text));
 }
 
 static SURROUND_HELP_TEXT: [(&str, &str); 6] = [
@@ -6524,7 +6763,7 @@ fn shell_prompt(cx: &mut Context, prompt: Cow<'static, str>, behavior: ShellBeha
         cx,
         prompt,
         Some('|'),
-        ui::completers::filename,
+        ui::completers::shell,
         move |cx, input: &str, event: PromptEvent| {
             if event != PromptEvent::Validate {
                 return;

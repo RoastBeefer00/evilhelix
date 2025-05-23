@@ -224,21 +224,15 @@ fn textobject_impl(cx: &mut Context, objtype: textobject::TextObject, op: Operat
         if let Some(ch) = event.char() {
             let textobject = move |editor: &mut Editor| {
                 let (view, doc) = current!(editor);
+                let loader = editor.syn_loader.load();
                 let text = doc.text().slice(..);
 
                 let textobject_treesitter = |obj_name: &str, range: Range| -> Range {
-                    let (lang_config, syntax) = match doc.language_config().zip(doc.syntax()) {
-                        Some(t) => t,
-                        None => return range,
+                    let Some(syntax) = doc.syntax() else {
+                        return range;
                     };
                     textobject::textobject_treesitter(
-                        text,
-                        range,
-                        objtype,
-                        obj_name,
-                        syntax.tree().root_node(),
-                        lang_config,
-                        count,
+                        text, range, objtype, obj_name, syntax, &loader, count,
                     )
                 };
 
@@ -473,7 +467,12 @@ pub(crate) fn netrw(cx: &mut Context) {
             dir_str.push_str(file.as_str());
         }
         let r = Rope::from(dir_str);
-        let mut doc = Document::from(r, None, Arc::new(ArcSwap::new(Arc::new(Config::default()))));
+        let mut doc = Document::from(
+            r,
+            None,
+            Arc::new(ArcSwap::new(Arc::new(Config::default()))),
+            cx.editor.syn_loader.clone(),
+        );
         doc.set_path(Some(cwd.as_path()));
         cx.editor.new_file_from_document(Action::Replace, doc);
         enter_netrw_mode(cx);
@@ -524,7 +523,12 @@ pub(crate) fn netrw_open_dir(cx: &mut Context, path: &PathBuf) {
             dir_str.push_str(file.as_str());
         }
         let r = Rope::from(dir_str);
-        let mut doc = Document::from(r, None, Arc::new(ArcSwap::new(Arc::new(Config::default()))));
+        let mut doc = Document::from(
+            r,
+            None,
+            Arc::new(ArcSwap::new(Arc::new(Config::default()))),
+            cx.editor.syn_loader.clone(),
+        );
         doc.set_path(Some(cwd.as_path()));
         cx.editor.new_file_from_document(Action::Replace, doc);
         enter_netrw_mode(cx);
@@ -607,8 +611,12 @@ pub(crate) fn open_netrw(cx: &mut Context) {
                 dir_str.push_str(file.as_str());
             }
             let r = Rope::from(dir_str);
-            let mut doc =
-                Document::from(r, None, Arc::new(ArcSwap::new(Arc::new(Config::default()))));
+            let mut doc = Document::from(
+                r,
+                None,
+                Arc::new(ArcSwap::new(Arc::new(Config::default()))),
+                cx.editor.syn_loader.clone(),
+            );
             doc.set_path(Some(cwd.as_path()));
             let _ = cx.editor.close_document(doc!(cx.editor).id(), true);
             cx.editor.new_file_from_document(Action::Replace, doc);
@@ -676,7 +684,12 @@ pub(crate) fn netrw_parent_dir(cx: &mut Context) {
             dir_str.push_str(file.as_str());
         }
         let r = Rope::from(dir_str);
-        let mut doc = Document::from(r, None, Arc::new(ArcSwap::new(Arc::new(Config::default()))));
+        let mut doc = Document::from(
+            r,
+            None,
+            Arc::new(ArcSwap::new(Arc::new(Config::default()))),
+            cx.editor.syn_loader.clone(),
+        );
         doc.set_path(Some(cwd.as_path()));
         let _ = cx.editor.close_document(doc!(cx.editor).id(), true);
         cx.editor.new_file_from_document(Action::Replace, doc);
